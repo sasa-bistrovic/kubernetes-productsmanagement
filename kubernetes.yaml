@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: productsmanagement-service
+spec:
+  selector:
+    app: productsmanagement
+  ports:
+    - protocol: TCP
+      port: 5050
+      targetPort: 8080
+  type: LoadBalancer    
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: productsmanagement-mssql-service
+spec:
+  selector:
+    app: productsmanagement-mssql
+  ports:
+    - protocol: TCP
+      port: 1433
+      targetPort: 1433
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 128Mi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productsmanagement-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: productsmanagement
+  template:
+    metadata:
+      labels:
+        app: productsmanagement
+    spec:
+      containers:
+        - name: productsmanagement
+          image: sasabistrovic/productsmanagement:2.0
+          ports:
+            - containerPort: 5050
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+            - name: ProductContext
+              value: "Server=productsmanagement-mssql-service;Database=master;User=sa;Password=YourStrong!Passw0rd;Encrypt=False;"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+      volumes:
+        - name: config-volume
+          emptyDir: {}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productsmanagement-mssql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: productsmanagement-mssql
+  template:
+    metadata:
+      labels:
+        app: productsmanagement-mssql
+    spec:
+      containers:
+        - name: productsmanagement-mssql
+          image: sasabistrovic/productsmanagement-mssql:1.0
+          env:
+            - name: ACCEPT_EULA
+              value: "Y"
+            - name: SA_PASSWORD
+              value: "YourStrong!Passw0rd"
+          ports:
+            - containerPort: 1433
+          volumeMounts:
+            - name: sql-data
+              mountPath: /var/opt/mssql/data
+      volumes:
+        - name: sql-data
+          persistentVolumeClaim:
+            claimName: sql-data-pvc
